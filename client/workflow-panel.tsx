@@ -1,7 +1,7 @@
 import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
 import { listWorkflowsRpc } from "../shared/contracts";
 import type { WorkflowRunStatus } from "../shared/types";
@@ -23,15 +23,22 @@ export function WorkflowTopologyViewer({
   onRefresh,
   theme,
 }: WorkflowTopologyViewerProps) {
-  const [internalSelectedRunId, setInternalSelectedRunId] = useState<string | null>(null);
+  const [internalSelectedRunId, setInternalSelectedRunId] = useState<string | null>(
+    controlledSelectedRunId ?? null
+  );
 
-  const activeRunId = controlledSelectedRunId !== undefined ? controlledSelectedRunId : internalSelectedRunId;
+  useEffect(() => {
+    if (controlledSelectedRunId !== undefined) {
+      setInternalSelectedRunId(controlledSelectedRunId);
+    }
+  }, [controlledSelectedRunId]);
+
+  const activeRunId = onSelectRun ? (controlledSelectedRunId ?? internalSelectedRunId) : internalSelectedRunId;
 
   const handleSelect = (runId: string) => {
+    setInternalSelectedRunId(runId);
     if (onSelectRun) {
       onSelectRun(runId);
-    } else {
-      setInternalSelectedRunId(runId);
     }
   };
 
@@ -177,6 +184,22 @@ export function WorkflowTopologyViewer({
                   );
                 })}
               </View>
+
+              {selectedRun.error && (
+                <View
+                  style={[
+                    styles.errorBox,
+                    {
+                      backgroundColor: theme.colors.statusDanger + "15",
+                      borderColor: theme.colors.statusDanger,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.errorText, { color: theme.colors.statusDanger }]}>
+                    {selectedRun.error}
+                  </Text>
+                </View>
+              )}
 
               {selectedRun.reports && selectedRun.reports.length > 0 && (
                 <View style={styles.reportsSection}>
@@ -370,6 +393,15 @@ const styles = StyleSheet.create({
   },
   reportsSection: {
     gap: 8,
+  },
+  errorBox: {
+    padding: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  errorText: {
+    fontSize: 12,
+    fontWeight: "500",
   },
   reportsTable: {
     borderRadius: 8,
