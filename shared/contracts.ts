@@ -23,3 +23,32 @@ export const listWorkflowsRpc = defineRpc({
   }),
   output: z.array(WorkflowRunStatusSchema),
 });
+
+export const cancelWorkflowRpc = defineRpc({
+  name: "workflow.cancel",
+  input: z.object({
+    runId: z.string(),
+  }),
+  output: z.object({
+    success: z.boolean(),
+  }),
+});
+
+export const retryAgentRpc = defineRpc({
+  name: "workflow.retry-agent",
+  input: z.object({
+    runId: z.string(),
+    agentName: z.string(),
+  }),
+  output: WorkflowRunStatusSchema,
+});
+
+export const deleteWorkflowRpc = defineRpc({
+  name: "workflow.delete",
+  input: z.object({
+    runId: z.string(),
+  }),
+  output: z.object({
+    success: z.boolean(),
+  }),
+});

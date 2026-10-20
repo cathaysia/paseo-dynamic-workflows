@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import type { WorkflowRunStatus } from "../../shared/types";
+import type { WorkflowRunInput, WorkflowRunStatus } from "../../shared/types";
 
 export class WorkflowCache {
   private db: DatabaseSync;
@@ -33,7 +33,8 @@ export class WorkflowCache {
         cached_steps INTEGER NOT NULL DEFAULT 0,
         live_steps INTEGER NOT NULL DEFAULT 0,
         started_at INTEGER NOT NULL,
-        completed_at INTEGER
+        completed_at INTEGER,
+        input_json TEXT
       );
 
       CREATE TABLE IF NOT EXISTS workflow_steps (
@@ -51,6 +52,10 @@ export class WorkflowCache {
       CREATE INDEX IF NOT EXISTS idx_workflow_steps_lookup 
       ON workflow_steps(agent_name, prompt_hash);
     `);
+
+    try {
+      this.db.exec("ALTER TABLE workflow_runs ADD COLUMN input_json TEXT;");
+    } catch {}
   }
 
   public hash(agentName: string, prompt: string): string {
@@ -104,12 +109,18 @@ export class WorkflowCache {
     );
   }
 
-  public saveRun(status: WorkflowRunStatus) {
+  public invalidateStep(agentName: string) {
+    const stmt = this.db.prepare("DELETE FROM workflow_steps WHERE agent_name = ?");
+    stmt.run(agentName);
+  }
+
+  public saveRun(status: WorkflowRunStatus, input?: WorkflowRunInput) {
+    const inputJson = input ? JSON.stringify(input) : null;
     const stmt = this.db.prepare(`
       INSERT INTO workflow_runs (
         id, status, current_phase, phases_json, reports_json,
-        result_json, error, cached_steps, live_steps, started_at, completed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        result_json, error, cached_steps, live_steps, started_at, completed_at, input_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         status = excluded.status,
         current_phase = excluded.current_phase,
@@ -119,7 +130,8 @@ export class WorkflowCache {
         error = excluded.error,
         cached_steps = excluded.cached_steps,
         live_steps = excluded.live_steps,
-        completed_at = excluded.completed_at
+        completed_at = excluded.completed_at,
+        input_json = COALESCE(excluded.input_json, workflow_runs.input_json)
     `);
 
     stmt.run(
@@ -133,8 +145,27 @@ export class WorkflowCache {
       status.cachedStepsCount,
       status.liveStepsCount,
       status.startedAt,
-      status.completedAt || null
+      status.completedAt || null,
+      inputJson
     );
+  }
+
+  public getRunInput(runId: string): WorkflowRunInput | null {
+    const stmt = this.db.prepare("SELECT input_json FROM workflow_runs WHERE id = ?");
+    const row = stmt.get(runId) as { input_json: string | null } | undefined;
+    if (!row || !row.input_json) return null;
+    try {
+      return JSON.parse(row.input_json);
+    } catch {
+      return null;
+    }
+  }
+
+  public deleteRun(runId: string) {
+    const stmt1 = this.db.prepare("DELETE FROM workflow_runs WHERE id = ?");
+    stmt1.run(runId);
+    const stmt2 = this.db.prepare("DELETE FROM workflow_steps WHERE run_id = ?");
+    stmt2.run(runId);
   }
 
   public getRun(runId: string): WorkflowRunStatus | null {

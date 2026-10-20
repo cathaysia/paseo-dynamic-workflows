@@ -7,6 +7,7 @@ export interface AgentConfig {
 
 export interface AskOptions {
   timeoutMs?: number;
+  retries?: number;
 }
 
 export interface AgentInstance {

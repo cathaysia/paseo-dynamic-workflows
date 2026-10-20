@@ -1,8 +1,14 @@
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, ScrollView, StyleSheet } from "react-native";
+import { useRpc } from "@getpaseo/plugin/client";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
 import type { WorkflowTimelineData } from "../shared/timeline";
 import type { WorkflowWorkerItem } from "../shared/types";
+import {
+  cancelWorkflowRpc,
+  retryAgentRpc,
+  deleteWorkflowRpc,
+} from "../shared/contracts";
 
 interface NodePosition {
   x: number;
@@ -39,6 +45,46 @@ export function WorkflowTimelineCard({
   const data = item.data;
   const swimlanesRef = useRef<any>(null);
   const [nodePositions, setNodePositions] = useState<Record<string, NodePosition>>({});
+  const cancelWorkflow = useRpc(cancelWorkflowRpc);
+  const retryAgent = useRpc(retryAgentRpc);
+  const deleteWorkflow = useRpc(deleteWorkflowRpc);
+  const [isActing, setIsActing] = useState(false);
+
+  const handleCancel = useCallback(async () => {
+    if (isActing) return;
+    setIsActing(true);
+    try {
+      await cancelWorkflow({ runId: data.runId });
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setIsActing(false);
+    }
+  }, [cancelWorkflow, isActing, data.runId]);
+
+  const handleRetryAgent = useCallback(async (agentName: string) => {
+    if (isActing) return;
+    setIsActing(true);
+    try {
+      await retryAgent({ runId: data.runId, agentName });
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setIsActing(false);
+    }
+  }, [retryAgent, isActing, data.runId]);
+
+  const handleDelete = useCallback(async () => {
+    if (isActing) return;
+    setIsActing(true);
+    try {
+      await deleteWorkflow({ runId: data.runId });
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setIsActing(false);
+    }
+  }, [deleteWorkflow, isActing, data.runId]);
 
   const statusColor = useMemo(() => {
     switch (data.status) {
@@ -46,6 +92,8 @@ export function WorkflowTimelineCard({
         return "#10b981";
       case "failed":
         return "#f43f5e";
+      case "cancelled":
+        return "#f59e0b";
       case "running":
         return "#38bdf8";
       default:
@@ -184,6 +232,16 @@ export function WorkflowTimelineCard({
               {data.status.toUpperCase()}
             </Text>
           </View>
+
+          {data.status === "running" ? (
+            <Pressable style={styles.actionBtnCancel} onPress={handleCancel}>
+              <Text style={styles.actionBtnCancelText}>⏹ Stop</Text>
+            </Pressable>
+          ) : (
+            <Pressable style={styles.actionBtnDelete} onPress={handleDelete}>
+              <Text style={styles.actionBtnDeleteText}>✕ Delete</Text>
+            </Pressable>
+          )}
         </View>
       </View>
 
@@ -453,21 +511,29 @@ export function WorkflowTimelineCard({
                             </span>
                           </div>
 
-                          {worker.model && (
-                            <span
-                              style={{
-                                fontSize: 8,
-                                color: "#94a3b8",
-                                backgroundColor: "#1c1d2e",
-                                padding: "1px 4px",
-                                borderRadius: 3,
-                                fontFamily: "monospace",
-                                flexShrink: 0,
-                              }}
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            {worker.model && (
+                              <span
+                                style={{
+                                  fontSize: 8,
+                                  color: "#94a3b8",
+                                  backgroundColor: "#1c1d2e",
+                                  padding: "1px 4px",
+                                  borderRadius: 3,
+                                  fontFamily: "monospace",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {worker.model}
+                              </span>
+                            )}
+                            <Pressable
+                              style={styles.retryNodeBtn}
+                              onPress={() => handleRetryAgent(worker.name)}
                             >
-                              {worker.model}
-                            </span>
-                          )}
+                              <Text style={styles.retryNodeBtnText}>↻</Text>
+                            </Pressable>
+                          </div>
                         </div>
 
                         <div
@@ -518,9 +584,14 @@ export function WorkflowTimelineCard({
 
       {data.error && (
         <View style={styles.rejectionCard}>
-          <Text style={styles.rejectionTitle}>
-            Execution Terminated by Deterministic Gate
-          </Text>
+          <View style={styles.rejectionCardTop}>
+            <Text style={styles.rejectionTitle}>
+              Execution Terminated by Deterministic Gate
+            </Text>
+            <Pressable style={styles.rejectionRetryBtn} onPress={() => handleRetryAgent("")}>
+              <Text style={styles.rejectionRetryBtnText}>↻ Retry Run</Text>
+            </Pressable>
+          </View>
           <Text style={styles.rejectionDetails}>{data.error}</Text>
         </View>
       )}
@@ -602,6 +673,48 @@ const styles = StyleSheet.create({
     fontSize: 8.5,
     fontWeight: "800",
   },
+  actionBtnCancel: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: "rgba(244, 63, 94, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(244, 63, 94, 0.4)",
+  },
+  actionBtnCancelText: {
+    fontSize: 8.5,
+    fontWeight: "700",
+    color: "#f43f5e",
+  },
+  actionBtnDelete: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: "rgba(100, 116, 139, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(100, 116, 139, 0.3)",
+  },
+  actionBtnDeleteText: {
+    fontSize: 8.5,
+    fontWeight: "700",
+    color: "#94a3b8",
+  },
+  retryNodeBtn: {
+    width: 16,
+    height: 16,
+    borderRadius: 3,
+    backgroundColor: "#1c1d2e",
+    borderWidth: 1,
+    borderColor: "#2a2d44",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  retryNodeBtnText: {
+    fontSize: 9,
+    color: "#38bdf8",
+    fontWeight: "bold",
+    lineHeight: 12,
+  },
   swimlanesScroll: {
     width: "100%",
   },
@@ -625,12 +738,30 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(244, 63, 94, 0.1)",
     borderWidth: 1,
     borderColor: "rgba(244, 63, 94, 0.4)",
-    gap: 2,
+    gap: 4,
+  },
+  rejectionCardTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   rejectionTitle: {
     fontSize: 10.5,
     fontWeight: "800",
     color: "#f43f5e",
+  },
+  rejectionRetryBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: "rgba(244, 63, 94, 0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(244, 63, 94, 0.5)",
+  },
+  rejectionRetryBtnText: {
+    fontSize: 8.5,
+    fontWeight: "800",
+    color: "#fecdd3",
   },
   rejectionDetails: {
     fontSize: 9.5,

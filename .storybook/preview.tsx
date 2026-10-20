@@ -1,4 +1,5 @@
 import type { Preview } from "@storybook/react-vite";
+import { PluginRpcProvider } from "@getpaseo/plugin/client/host";
 
 export const mockPaseoTheme = {
   colors: {
@@ -17,6 +18,18 @@ export const mockPaseoTheme = {
 };
 
 const preview: Preview = {
+  decorators: [
+    (Story) => (
+      <PluginRpcProvider
+        invoke={async (method: string, input: unknown) => {
+          console.log("[Storybook Mock RPC]", method, input);
+          return { success: true };
+        }}
+      >
+        <Story />
+      </PluginRpcProvider>
+    ),
+  ],
   parameters: {
     layout: "fullscreen",
     backgrounds: {

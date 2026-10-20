@@ -22,18 +22,57 @@ const execFileAsync = promisify(execFile);
 
 export class WorkflowRunner {
   private cache: WorkflowCache;
+  private activeRuns = new Map<string, { agentHandles: Map<string, PaseoAgentHandle>; cancelled: boolean }>();
 
   constructor(cache?: WorkflowCache) {
     this.cache = cache || new WorkflowCache();
   }
 
-  public async run(
-    input: WorkflowRunInput,
+  public async cancel(runId: string): Promise<{ success: boolean }> {
+    const active = this.activeRuns.get(runId);
+    if (active) {
+      active.cancelled = true;
+      for (const handle of active.agentHandles.values()) {
+        try {
+          if (typeof (handle as any).kill === "function") {
+            await (handle as any).kill();
+          }
+        } catch {}
+      }
+      this.activeRuns.delete(runId);
+    }
+    const current = this.cache.getRun(runId);
+    if (current) {
+      current.status = "cancelled";
+      current.completedAt = Date.now();
+      this.cache.saveRun(current);
+    }
+    return { success: true };
+  }
+
+  public async retryAgent(
+    runId: string,
+    agentName: string,
     paseo: PaseoApi
   ): Promise<WorkflowRunStatus> {
-    const runId = `dwf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    this.cache.invalidateStep(agentName);
+    const input = this.cache.getRunInput(runId);
+    if (!input) {
+      throw new Error(`Cannot retry: original input for run '${runId}' not found.`);
+    }
+    return await this.run(input, paseo, runId);
+  }
+
+  public async run(
+    input: WorkflowRunInput,
+    paseo: PaseoApi,
+    existingRunId?: string
+  ): Promise<WorkflowRunStatus> {
+    const runId = existingRunId || `dwf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const limiter = new ConcurrencyLimiter(input.maxConcurrency || 4);
     const agentHandles = new Map<string, PaseoAgentHandle>();
+    const activeRunState = { agentHandles, cancelled: false };
+    this.activeRuns.set(runId, activeRunState);
 
     const status: WorkflowRunStatus = {
       runId,
@@ -46,7 +85,7 @@ export class WorkflowRunner {
     };
 
     const updateStatus = () => {
-      this.cache.saveRun(status);
+      this.cache.saveRun(status, input);
     };
     updateStatus();
 
@@ -72,12 +111,11 @@ export class WorkflowRunner {
             })
           ),
         });
-      } catch {
-        // Ignore timeline append errors if agent was closed or doesn't support it
-      }
+      } catch {}
     };
 
     const phase = (title: string) => {
+      if (activeRunState.cancelled) throw new Error("Workflow cancelled by user");
       status.currentPhase = title;
       status.phases.push({ title, timestamp: Date.now() });
       updateStatus();
@@ -89,7 +127,6 @@ export class WorkflowRunner {
     };
 
     const log = (msg: string) => {
-      // Streamed or recorded to console / timeline
       console.log(`[workflow:${runId}] ${msg}`);
     };
 
@@ -122,6 +159,10 @@ export class WorkflowRunner {
       return {
         name: agentName,
         ask: async <T = string>(prompt: string, options?: AskOptions): Promise<T> => {
+          if (activeRunState.cancelled) {
+            throw new Error("Workflow cancelled by user");
+          }
+
           const cached = workflowCache.getCachedStep(agentName, prompt);
           if (cached !== null) {
             status.cachedStepsCount++;
@@ -133,6 +174,10 @@ export class WorkflowRunner {
           updateStatus();
 
           return await limiter.run(async () => {
+            if (activeRunState.cancelled) {
+              throw new Error("Workflow cancelled by user");
+            }
+
             let handle = agentHandles.get(agentName);
 
             if (!handle) {
@@ -156,19 +201,38 @@ export class WorkflowRunner {
             }
 
             const timeoutMs = options?.timeoutMs || 600_000;
-            const turnResult = await handle.waitForFinish(timeoutMs);
+            const retries = options?.retries ?? 0;
+            let lastErr: any = null;
 
-            if (turnResult.status === "error") {
-              throw new Error(
-                `Subagent '${agentName}' failed: ${turnResult.error || "Unknown error"}`
-              );
+            for (let attempt = 0; attempt <= retries; attempt++) {
+              if (activeRunState.cancelled) {
+                throw new Error("Workflow cancelled by user");
+              }
+
+              try {
+                if (attempt > 0) {
+                  await handle.send(prompt);
+                }
+                const turnResult = await handle.waitForFinish(timeoutMs);
+
+                if (turnResult.status === "error") {
+                  throw new Error(
+                    `Subagent '${agentName}' failed: ${turnResult.error || "Unknown error"}`
+                  );
+                }
+
+                const lastMessage = turnResult.lastMessage || "";
+                const parsed = parseResponse<T>(lastMessage);
+
+                workflowCache.saveStep(runId, agentName, prompt, parsed, provider);
+                return parsed;
+              } catch (err: any) {
+                lastErr = err;
+                if (attempt === retries) throw err;
+              }
             }
 
-            const lastMessage = turnResult.lastMessage || "";
-            const parsed = parseResponse<T>(lastMessage);
-
-            workflowCache.saveStep(runId, agentName, prompt, parsed, provider);
-            return parsed;
+            throw lastErr;
           });
         },
       };
@@ -180,6 +244,9 @@ export class WorkflowRunner {
         args: string[] = [],
         options: WorldRunOptions = {}
       ): Promise<WorldRunResult> {
+        if (activeRunState.cancelled) {
+          throw new Error("Workflow cancelled by user");
+        }
         const cwd = options.cwd ? resolve(input.cwd, options.cwd) : input.cwd;
         try {
           const { stdout, stderr } = await execFileAsync(command, args, {
@@ -280,6 +347,7 @@ export class WorkflowRunner {
       status.error = "No workflow script or valid path provided.";
       status.completedAt = Date.now();
       updateStatus();
+      this.activeRuns.delete(runId);
       return status;
     }
 
@@ -307,19 +375,26 @@ export class WorkflowRunner {
         timeout: 3_600_000,
       });
 
-      status.status = "completed";
-      status.result = result;
+      if (activeRunState.cancelled) {
+        status.status = "cancelled";
+        status.error = "Workflow cancelled by user";
+      } else {
+        status.status = "completed";
+        status.result = result;
+      }
       status.completedAt = Date.now();
       updateStatus();
       await appendTimeline();
       return status;
     } catch (err: any) {
-      status.status = "failed";
+      status.status = activeRunState.cancelled ? "cancelled" : "failed";
       status.error = err.message || String(err);
       status.completedAt = Date.now();
       updateStatus();
       await appendTimeline();
       return status;
+    } finally {
+      this.activeRuns.delete(runId);
     }
   }
 }
