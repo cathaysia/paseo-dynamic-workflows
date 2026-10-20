@@ -1,0 +1,9 @@
+{
+  "id": "paseo-dynamic-workflows",
+  "name": "Dynamic Workflows",
+  "description": "Multi-agent dynamic workflow orchestration for Paseo with subagent topology, concurrency control, caching, and worktree isolation.",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.12.0"
+  }
+}
