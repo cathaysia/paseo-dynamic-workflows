@@ -2,6 +2,10 @@
   "name": "paseo-dynamic-workflows",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "files": [
     "paseo-plugin.json",
     "OVERVIEW.md",

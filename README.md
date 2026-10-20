@@ -13,7 +13,7 @@
 - **Full MCP Tool Access**: Because each subagent runs through Paseo's native daemon/CLI, every subagent has access to all configured MCP servers (`git`, `agent-browser`, `context7`, etc.).
 - **Heterogeneous Model Selection**: Different subagents in the same workflow can run on different providers (e.g. `claude/opus` for planning, `codex/gpt-5.4` for implementation, `codex/o3` for review).
 - **Incremental Cache & Amend**: Every `ask()` result is indexed in SQLite by `(agentName, promptHash)`. Modifying a script and re-running it automatically replays previously completed steps at **0 tokens**.
-- **Deterministic Gates (`world.run`)**: Loop termination and validation decisions are driven by actual command exit codes (e.g. `cargo test`, `npm test`), preventing hallucinations.
+- **Deterministic Gates (`world.run`)**: Loop termination and validation decisions are driven by actual command exit codes (e.g. `cargo test`, `pnpm test`), preventing hallucinations.
 - **Plugin + Skill in One**: The plugin automatically injects the `dynamic-workflows` Skill into every Paseo agent at session creation, and symlinks it to `~/.agents/skills/dynamic-workflows`.
 
 ---
@@ -55,6 +55,9 @@ cd paseo-dynamic-workflows
 
 # Install dependencies
 pnpm install
+
+# Typecheck
+pnpm typecheck
 
 # Register plugin with Paseo
 paseo plugin add .

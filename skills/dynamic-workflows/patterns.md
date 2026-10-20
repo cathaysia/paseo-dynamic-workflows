@@ -89,6 +89,6 @@ const branches = await Promise.all(
 );
 
 phase("Run project integration test suite");
-const suite = await world.run("npm", ["test"]);
+const suite = await world.run("pnpm", ["test"]);
 return { modules: branches, integrationPassed: suite.exitCode === 0 };
 ```

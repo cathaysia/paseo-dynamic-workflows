@@ -51,7 +51,7 @@ while (round <= 5 && !testPassed) {
   );
 
   phase("Verify with project test suite");
-  const check = await world.run("npm", ["test"], { timeoutMs: 180_000 });
+  const check = await world.run("pnpm", ["test"], { timeoutMs: 180_000 });
 
   if (check.exitCode === 0) {
     testPassed = true;
