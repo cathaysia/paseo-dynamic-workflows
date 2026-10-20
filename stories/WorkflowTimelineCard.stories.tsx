@@ -25,9 +25,9 @@ export const Running: Story = {
         status: "running",
         currentPhase: "Parallel implementation in worktrees",
         phases: [
-          { title: "Discovery & AST call-graph mapping", timestamp: Date.now() - 35000 },
-          { title: "Planner ↔ Reviewer architecture convergence", timestamp: Date.now() - 20000 },
-          { title: "Parallel implementation in worktrees", timestamp: Date.now() - 5000 },
+          { title: "Discovery & AST call-graph mapping", timestamp: Date.now() - 35000, status: "completed" },
+          { title: "Planner ↔ Reviewer architecture convergence", timestamp: Date.now() - 20000, status: "completed", rounds: 2 },
+          { title: "Parallel implementation in worktrees", timestamp: Date.now() - 5000, status: "running" },
         ],
         reports: [
           { timestamp: Date.now() - 15000, payload: { planner: "jwt-token-refresh", status: "agreed" } },
@@ -55,10 +55,10 @@ export const CompletedWithHighCache: Story = {
         status: "completed",
         currentPhase: "Gate Verification: pnpm test",
         phases: [
-          { title: "Find modified TypeScript modules", timestamp: Date.now() - 60000 },
-          { title: "Parallel Security Audit (12 files)", timestamp: Date.now() - 40000 },
-          { title: "Confirmer validation pass", timestamp: Date.now() - 15000 },
-          { title: "Gate Verification: pnpm test", timestamp: Date.now() - 2000 },
+          { title: "Find modified TypeScript modules", timestamp: Date.now() - 60000, status: "completed" },
+          { title: "Parallel Security Audit (12 files)", timestamp: Date.now() - 40000, status: "completed" },
+          { title: "Confirmer validation pass", timestamp: Date.now() - 15000, status: "completed" },
+          { title: "Gate Verification: pnpm test", timestamp: Date.now() - 2000, status: "completed" },
         ],
         reports: [
           { timestamp: Date.now() - 38000, payload: { file: "src/auth.ts", severity: "high", issue: "Unvalidated redirect target" } },
@@ -93,9 +93,9 @@ export const FailedGate: Story = {
         status: "failed",
         currentPhase: "Verify with cargo test",
         phases: [
-          { title: "Inspect build errors", timestamp: Date.now() - 50000 },
-          { title: "Coder agent applies lifetime fix", timestamp: Date.now() - 30000 },
-          { title: "Verify with cargo test", timestamp: Date.now() - 10000 },
+          { title: "Inspect build errors", timestamp: Date.now() - 50000, status: "completed" },
+          { title: "Coder agent applies lifetime fix", timestamp: Date.now() - 30000, status: "completed" },
+          { title: "Verify with cargo test", timestamp: Date.now() - 10000, status: "failed", rounds: 3 },
         ],
         reports: [
           { timestamp: Date.now() - 10000, payload: { attempt: 3, exitCode: 101, command: "cargo test" } },

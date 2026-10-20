@@ -12,10 +12,42 @@ export const WorkflowRunInputSchema = z.object({
 
 export type WorkflowRunInput = z.infer<typeof WorkflowRunInputSchema>;
 
+export const WorkflowWorkerItemSchema = z.object({
+  id: z.string().optional(),
+  name: z.string(),
+  model: z.string().optional(),
+  status: z.enum(["pending", "running", "completed", "cached", "failed"]),
+  duration: z.string().optional(),
+  avatarColor: z.string().optional(),
+  tasksCount: z.number().optional(),
+  dependsOn: z.array(z.string()).optional(),
+  outputSnippet: z.string().optional(),
+  worktree: z.string().optional(),
+});
+
+export type WorkflowWorkerItem = z.infer<typeof WorkflowWorkerItemSchema>;
+
 export const WorkflowPhaseSchema = z.object({
   title: z.string(),
   timestamp: z.number(),
+  status: z.enum(["pending", "running", "completed", "failed"]).optional(),
+  workers: z.array(WorkflowWorkerItemSchema).optional(),
+  rounds: z.number().optional(),
+  gate: z.object({
+    command: z.string(),
+    exitCode: z.number(),
+    status: z.enum(["passed", "failed"]),
+  }).optional(),
 });
+
+export const WorkflowArtifactItemSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  kind: z.string(),
+  size: z.string().optional(),
+});
+
+export type WorkflowArtifactItem = z.infer<typeof WorkflowArtifactItemSchema>;
 
 export const WorkflowReportItemSchema = z.object({
   timestamp: z.number(),
@@ -34,6 +66,7 @@ export const WorkflowRunStatusSchema = z.object({
   liveStepsCount: z.number(),
   startedAt: z.number(),
   completedAt: z.number().optional(),
+  artifacts: z.array(WorkflowArtifactItemSchema).optional(),
 });
 
 export type WorkflowRunStatus = z.infer<typeof WorkflowRunStatusSchema>;

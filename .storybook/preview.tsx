@@ -2,26 +2,27 @@ import type { Preview } from "@storybook/react-vite";
 
 export const mockPaseoTheme = {
   colors: {
-    surface0: "#11111b",
-    surface1: "#181825",
-    surface2: "#1e1e2e",
-    border: "#313244",
-    foreground: "#cdd6f4",
-    foregroundMuted: "#a6adc8",
-    accent: "#89b4fa",
-    accentForeground: "#11111b",
-    statusSuccess: "#a6e3a1",
-    statusWarning: "#f9e2af",
-    statusDanger: "#f38ba8",
+    surface0: "#0d0e15",
+    surface1: "#13141f",
+    surface2: "#1a1b2b",
+    border: "#25273c",
+    foreground: "#e2e8f0",
+    foregroundMuted: "#8b949e",
+    accent: "#38bdf8",
+    accentForeground: "#0d0e15",
+    statusSuccess: "#10b981",
+    statusWarning: "#f59e0b",
+    statusDanger: "#f43f5e",
   },
 };
 
 const preview: Preview = {
   parameters: {
+    layout: "fullscreen",
     backgrounds: {
       default: "paseo-dark",
       values: [
-        { name: "paseo-dark", value: "#11111b" },
+        { name: "paseo-dark", value: "#0d0e15" },
         { name: "light", value: "#ffffff" },
       ],
     },
