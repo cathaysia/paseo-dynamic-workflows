@@ -50,6 +50,33 @@ export class WorkflowRunner {
     };
     updateStatus();
 
+    const appendTimeline = async () => {
+      if (!input.parentAgentId) return;
+      try {
+        await paseo.agents.ref(input.parentAgentId).timeline.append({
+          type: "plugin",
+          id: `wf-card-${status.runId}`,
+          kind: "workflow-card",
+          version: 1,
+          data: JSON.parse(
+            JSON.stringify({
+              runId: status.runId,
+              status: status.status,
+              currentPhase: status.currentPhase || null,
+              phases: status.phases,
+              reports: status.reports,
+              cachedStepsCount: status.cachedStepsCount,
+              liveStepsCount: status.liveStepsCount,
+              result: status.result ?? null,
+              error: status.error ?? null,
+            })
+          ),
+        });
+      } catch {
+        // Ignore timeline append errors if agent was closed or doesn't support it
+      }
+    };
+
     const phase = (title: string) => {
       status.currentPhase = title;
       status.phases.push({ title, timestamp: Date.now() });
@@ -284,12 +311,14 @@ export class WorkflowRunner {
       status.result = result;
       status.completedAt = Date.now();
       updateStatus();
+      await appendTimeline();
       return status;
     } catch (err: any) {
       status.status = "failed";
       status.error = err.message || String(err);
       status.completedAt = Date.now();
       updateStatus();
+      await appendTimeline();
       return status;
     }
   }
