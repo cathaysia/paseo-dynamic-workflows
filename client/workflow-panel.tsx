@@ -6,29 +6,45 @@ import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
 import { listWorkflowsRpc } from "../shared/contracts";
 import type { WorkflowRunStatus } from "../shared/types";
 
-export function WorkflowWorkspacePanel({
-  theme,
-}: PluginWorkspacePanelProps) {
-  const listWorkflows = useRpc(listWorkflowsRpc);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+export type WorkflowTheme = PluginWorkspacePanelProps["theme"];
 
-  const { data: runs, refetch } = useQuery({
-    queryKey: ["workspace-workflows"],
-    queryFn: () => listWorkflows({ limit: 10 }),
-    refetchInterval: 3000,
-  });
+export interface WorkflowTopologyViewerProps {
+  runs?: WorkflowRunStatus[];
+  selectedRunId?: string | null;
+  onSelectRun?: (runId: string) => void;
+  onRefresh?: () => void;
+  theme: WorkflowTheme;
+}
+
+export function WorkflowTopologyViewer({
+  runs,
+  selectedRunId: controlledSelectedRunId,
+  onSelectRun,
+  onRefresh,
+  theme,
+}: WorkflowTopologyViewerProps) {
+  const [internalSelectedRunId, setInternalSelectedRunId] = useState<string | null>(null);
+
+  const activeRunId = controlledSelectedRunId !== undefined ? controlledSelectedRunId : internalSelectedRunId;
+
+  const handleSelect = (runId: string) => {
+    if (onSelectRun) {
+      onSelectRun(runId);
+    } else {
+      setInternalSelectedRunId(runId);
+    }
+  };
 
   const selectedRun: WorkflowRunStatus | undefined = useMemo(() => {
     if (!runs || runs.length === 0) return undefined;
-    if (selectedRunId) {
-      return runs.find((r) => r.runId === selectedRunId) || runs[0];
+    if (activeRunId) {
+      return runs.find((r) => r.runId === activeRunId) || runs[0];
     }
     return runs[0];
-  }, [runs, selectedRunId]);
+  }, [runs, activeRunId]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.surface0 }]}>
-      {/* Top Header */}
       <View style={[styles.header, { borderColor: theme.colors.border }]}>
         <View style={styles.headerLeft}>
           <Text style={[styles.headerTitle, { color: theme.colors.foreground }]}>
@@ -39,18 +55,19 @@ export function WorkflowWorkspacePanel({
           </Text>
         </View>
 
-        <Pressable
-          style={[styles.refreshBtn, { backgroundColor: theme.colors.surface1, borderColor: theme.colors.border }]}
-          onPress={() => refetch()}
-        >
-          <Text style={[styles.refreshBtnText, { color: theme.colors.foreground }]}>
-            ↻ Refresh
-          </Text>
-        </Pressable>
+        {onRefresh && (
+          <Pressable
+            style={[styles.refreshBtn, { backgroundColor: theme.colors.surface1, borderColor: theme.colors.border }]}
+            onPress={onRefresh}
+          >
+            <Text style={[styles.refreshBtnText, { color: theme.colors.foreground }]}>
+              ↻ Refresh
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       <View style={styles.body}>
-        {/* Runs List Sidebar */}
         <View style={[styles.sidebar, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface1 }]}>
           <Text style={[styles.sectionLabel, { color: theme.colors.foregroundMuted }]}>
             WORKFLOW RUNS
@@ -65,7 +82,7 @@ export function WorkflowWorkspacePanel({
                     styles.runItem,
                     isSelected && { backgroundColor: theme.colors.surface2 },
                   ]}
-                  onPress={() => setSelectedRunId(r.runId)}
+                  onPress={() => handleSelect(r.runId)}
                 >
                   <Text style={[styles.runIdText, { color: theme.colors.foreground }]}>
                     {r.runId}
@@ -91,11 +108,9 @@ export function WorkflowWorkspacePanel({
           </ScrollView>
         </View>
 
-        {/* Visual Graph / Detail View */}
         <ScrollView style={styles.mainView}>
           {selectedRun ? (
             <View style={styles.detailCard}>
-              {/* Metric Highlights */}
               <View style={styles.metricsRow}>
                 <View style={[styles.metricTile, { backgroundColor: theme.colors.surface1, borderColor: theme.colors.border }]}>
                   <Text style={[styles.metricNum, { color: theme.colors.statusSuccess }]}>
@@ -125,7 +140,6 @@ export function WorkflowWorkspacePanel({
                 </View>
               </View>
 
-              {/* Topological Flow / Stepper Graph */}
               <Text style={[styles.sectionTitle, { color: theme.colors.foreground }]}>
                 Execution Flow Graph (Phases & Gates)
               </Text>
@@ -164,7 +178,6 @@ export function WorkflowWorkspacePanel({
                 })}
               </View>
 
-              {/* Live Reports Table */}
               {selectedRun.reports && selectedRun.reports.length > 0 && (
                 <View style={styles.reportsSection}>
                   <Text style={[styles.sectionTitle, { color: theme.colors.foreground }]}>
@@ -195,6 +208,29 @@ export function WorkflowWorkspacePanel({
         </ScrollView>
       </View>
     </View>
+  );
+}
+
+export function WorkflowWorkspacePanel({
+  theme,
+}: PluginWorkspacePanelProps) {
+  const listWorkflows = useRpc(listWorkflowsRpc);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+
+  const { data: runs, refetch } = useQuery({
+    queryKey: ["workspace-workflows"],
+    queryFn: () => listWorkflows({ limit: 10 }),
+    refetchInterval: 3000,
+  });
+
+  return (
+    <WorkflowTopologyViewer
+      runs={runs}
+      selectedRunId={selectedRunId}
+      onSelectRun={setSelectedRunId}
+      onRefresh={() => refetch()}
+      theme={theme}
+    />
   );
 }
 

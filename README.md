@@ -69,6 +69,24 @@ In Paseo, open the **Workflows** icon on the sidebar, or type `/workflow` in any
 
 ---
 
+## Visual Preview with Storybook
+
+You can preview the workflow topology viewer and chat timeline cards in Storybook:
+
+```bash
+# Start Storybook dev server (http://localhost:6006)
+pnpm storybook
+
+# Or build static Storybook site
+pnpm build-storybook
+```
+
+Included stories:
+- **Timeline / WorkflowTimelineCard**: Running, CompletedWithHighCache (zero-token stats), FailedGate.
+- **Workspace / WorkflowTopologyViewer**: ActiveParallelWorkflow (fan-out audit), CompletedFullPipeline, EmptyState.
+
+---
+
 ## Quick Example: Fan-Out Code Review
 
 Create a script named `.paseo/review-workflow.ts`:
