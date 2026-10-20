@@ -1,213 +1,560 @@
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
-import { useMemo, useState } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, ScrollView, StyleSheet } from "react-native";
 import type { WorkflowTimelineData } from "../shared/timeline";
+import type { WorkflowWorkerItem } from "../shared/types";
+
+interface NodePosition {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface WorkerEdge {
+  fromId: string;
+  toId: string;
+  fromStatus: string;
+  toStatus: string;
+}
+
+export interface WorkflowTimelineCardProps {
+  item: {
+    type?: string;
+    kind?: string;
+    version?: number;
+    data: WorkflowTimelineData;
+  };
+  theme?: any;
+  layout?: any;
+  agentId?: string;
+  timestamp?: Date;
+  host?: any;
+}
 
 export function WorkflowTimelineCard({
   item,
   theme,
-}: PluginTimelineItemProps<WorkflowTimelineData>) {
+}: WorkflowTimelineCardProps) {
   const data = item.data;
-  const [showLogs, setShowLogs] = useState(false);
+  const swimlanesRef = useRef<any>(null);
+  const [nodePositions, setNodePositions] = useState<Record<string, NodePosition>>({});
 
   const statusColor = useMemo(() => {
     switch (data.status) {
       case "completed":
-        return theme.colors.statusSuccess;
+        return "#10b981";
       case "failed":
-        return theme.colors.statusDanger;
+        return "#f43f5e";
       case "running":
         return "#38bdf8";
       default:
-        return theme.colors.foregroundMuted;
+        return "#64748b";
     }
-  }, [data.status, theme.colors]);
+  }, [data.status]);
+
+  const allWorkers = useMemo(() => {
+    const list: WorkflowWorkerItem[] = [];
+    (data.phases ?? []).forEach((phase, pIdx) => {
+      const isCurrent = data.currentPhase === phase.title;
+      const stageWorkers =
+        phase.workers && phase.workers.length > 0
+          ? phase.workers
+          : [
+              {
+                id: `stage-${pIdx}`,
+                name: phase.title,
+                status: phase.status ?? (isCurrent ? "running" : "completed"),
+                duration: "auto",
+              },
+            ];
+      list.push(...stageWorkers);
+    });
+    return list;
+  }, [data.phases, data.currentPhase]);
+
+  const edges = useMemo(() => {
+    const result: WorkerEdge[] = [];
+    const workerMap = new Map<string, WorkflowWorkerItem>();
+
+    allWorkers.forEach((w) => {
+      const key = w.id ?? w.name;
+      workerMap.set(key, w);
+    });
+
+    allWorkers.forEach((worker) => {
+      const toId = worker.id ?? worker.name;
+      if (worker.dependsOn && Array.isArray(worker.dependsOn)) {
+        worker.dependsOn.forEach((depId) => {
+          const fromWorker = workerMap.get(depId);
+          result.push({
+            fromId: depId,
+            toId,
+            fromStatus: fromWorker?.status ?? "completed",
+            toStatus: worker.status,
+          });
+        });
+      }
+    });
+
+    return result;
+  }, [allWorkers]);
+
+  const updateNodePositions = () => {
+    if (!swimlanesRef.current) return;
+    const container = swimlanesRef.current;
+    const containerRect = container.getBoundingClientRect();
+    const cards = container.querySelectorAll("[data-agent-id]");
+    const positions: Record<string, NodePosition> = {};
+
+    cards.forEach((el: any) => {
+      const id = el.getAttribute("data-agent-id");
+      if (!id) return;
+      const rect = el.getBoundingClientRect();
+      positions[id] = {
+        x: rect.left - containerRect.left,
+        y: rect.top - containerRect.top,
+        width: rect.width,
+        height: rect.height,
+      };
+    });
+
+    setNodePositions(positions);
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(updateNodePositions, 80);
+    const win = typeof globalThis !== "undefined" ? (globalThis as any) : null;
+    if (win && typeof win.addEventListener === "function") {
+      win.addEventListener("resize", updateNodePositions);
+    }
+    return () => {
+      clearTimeout(timer);
+      if (win && typeof win.removeEventListener === "function") {
+        win.removeEventListener("resize", updateNodePositions);
+      }
+    };
+  }, [data, allWorkers]);
 
   return (
     <View
       style={[
-        styles.card,
+        styles.cardContainer,
         {
-          backgroundColor: theme.colors.surface1,
-          borderColor: theme.colors.border,
+          backgroundColor: theme?.colors?.surface1 ?? "#12131d",
+          borderColor: theme?.colors?.border ?? "#1e2030",
         },
       ]}
     >
-      <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <Text style={[styles.workflowIcon, { color: theme.colors.accent }]}>⚡</Text>
-          <View style={styles.titleMeta}>
-            <View style={styles.runIdRow}>
-              <Text style={[styles.title, { color: theme.colors.foreground }]}>
-                Dynamic Workflow
-              </Text>
-              <Text style={[styles.runIdBadge, { color: theme.colors.foregroundMuted }]}>
-                {data.runId}
-              </Text>
-            </View>
-            <Text style={[styles.subtitle, { color: theme.colors.foregroundMuted }]}>
-              {data.currentPhase ?? "Orchestrating subagents"}
+      <View style={styles.cardHeader}>
+        <View style={styles.cardHeaderLeft}>
+          <Text style={[styles.cardIcon, { color: theme?.colors?.accent ?? "#38bdf8" }]}>⚡</Text>
+          <View style={styles.cardTitleCol}>
+            <Text style={[styles.cardTitle, { color: theme?.colors?.foreground ?? "#f1f5f9" }]}>
+              {data.runId}
+            </Text>
+            <Text
+              style={[styles.cardSubtitle, { color: theme?.colors?.foregroundMuted ?? "#64748b" }]}
+              numberOfLines={1}
+            >
+              {data.currentPhase ?? "Dynamic Workflow"}
             </Text>
           </View>
         </View>
 
-        <View
-          style={[
-            styles.statusLampBadge,
-            {
-              backgroundColor: statusColor + "18",
-              borderColor: statusColor + "44",
-            },
-          ]}
-        >
-          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-          <Text style={[styles.statusText, { color: statusColor }]}>
-            {data.status.toUpperCase()}
-          </Text>
+        <View style={styles.cardHeaderRight}>
+          {data.cachedStepsCount > 0 && (
+            <View style={styles.cachePill}>
+              <Text style={styles.cachePillText}>
+                ⚡ {data.cachedStepsCount} cached
+              </Text>
+            </View>
+          )}
+          <View
+            style={[
+              styles.statusBadge,
+              {
+                backgroundColor: statusColor + "18",
+                borderColor: statusColor + "40",
+              },
+            ]}
+          >
+            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+            <Text style={[styles.statusBadgeText, { color: statusColor }]}>
+              {data.status.toUpperCase()}
+            </Text>
+          </View>
         </View>
       </View>
 
-      <View
-        style={[
-          styles.statStrip,
-          {
-            backgroundColor: theme.colors.surface0,
-            borderColor: theme.colors.border,
-          },
-        ]}
+      <ScrollView
+        style={styles.swimlanesScroll}
+        contentContainerStyle={styles.swimlanesScrollContent}
+        horizontal
+        showsHorizontalScrollIndicator={true}
       >
-        <Text style={[styles.statItem, { color: theme.colors.statusSuccess }]}>
-          ⚡ {data.cachedStepsCount} cached (0 token)
-        </Text>
-        <Text style={[styles.statDividerText, { color: theme.colors.border }]}>|</Text>
-        <Text style={[styles.statItem, { color: "#38bdf8" }]}>
-          🔄 {data.liveStepsCount} live executions
-        </Text>
-        <Text style={[styles.statDividerText, { color: theme.colors.border }]}>|</Text>
-        <Text style={[styles.statItem, { color: theme.colors.foregroundMuted }]}>
-          📊 {data.phases.length} stations
-        </Text>
-      </View>
+        <div
+          ref={swimlanesRef}
+          style={{
+            position: "relative",
+            display: "flex",
+            flexDirection: "row",
+            gap: 24,
+            paddingTop: 6,
+            paddingBottom: 14,
+            minWidth: "100%",
+          }}
+        >
+          <svg
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              pointerEvents: "none",
+              zIndex: 1,
+            }}
+          >
+            <defs>
+              <marker id="wf-edge-cyan" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M 0 0 L 6 3 L 0 6 z" fill="#38bdf8" />
+              </marker>
+              <marker id="wf-edge-green" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M 0 0 L 6 3 L 0 6 z" fill="#10b981" />
+              </marker>
+              <marker id="wf-edge-rose" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M 0 0 L 6 3 L 0 6 z" fill="#f43f5e" />
+              </marker>
+              <marker id="wf-edge-gray" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M 0 0 L 6 3 L 0 6 z" fill="#475569" />
+              </marker>
+            </defs>
 
-      {data.phases && data.phases.length > 0 && (
-        <View style={styles.metroSection}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.foregroundMuted }]}>
-            TRANSIT STATIONS
-          </Text>
+            {edges.map((edge, eIdx) => {
+              const fromPos = nodePositions[edge.fromId];
+              const toPos = nodePositions[edge.toId];
+              if (!fromPos || !toPos) return null;
 
-          <View style={styles.metroList}>
-            {data.phases.map((phase, idx) => {
-              const isCurrent = data.currentPhase === phase.title;
-              const isLast = idx === data.phases.length - 1;
-              const isFailed = data.status === "failed" && isLast;
-              const lampColor = isFailed
-                ? theme.colors.statusDanger
-                : isCurrent
+              const x1 = fromPos.x + fromPos.width;
+              const y1 = fromPos.y + fromPos.height / 2;
+              const x2 = toPos.x;
+              const y2 = toPos.y + toPos.height / 2;
+
+              const dx = Math.max(14, (x2 - x1) / 2);
+              const pathData = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+
+              const isRunningEdge = edge.toStatus === "running" || edge.fromStatus === "running";
+              const isFailedEdge = edge.toStatus === "failed" || edge.fromStatus === "failed";
+              const isCompletedEdge = edge.toStatus === "completed" || edge.toStatus === "cached";
+
+              const edgeColor = isRunningEdge
                 ? "#38bdf8"
-                : theme.colors.statusSuccess;
+                : isFailedEdge
+                ? "#f43f5e"
+                : isCompletedEdge
+                ? "#10b981"
+                : "#475569";
+
+              const markerId = isRunningEdge
+                ? "wf-edge-cyan"
+                : isFailedEdge
+                ? "wf-edge-rose"
+                : isCompletedEdge
+                ? "wf-edge-green"
+                : "wf-edge-gray";
 
               return (
-                <View key={idx} style={styles.stationRow}>
-                  <View style={styles.stationSpine}>
+                <g key={eIdx}>
+                  <path
+                    d={pathData}
+                    stroke={edgeColor}
+                    strokeWidth={1.5}
+                    strokeDasharray={isRunningEdge ? "4 2" : undefined}
+                    fill="none"
+                    markerEnd={`url(#${markerId})`}
+                    style={{
+                      opacity: isRunningEdge ? 0.95 : 0.7,
+                    }}
+                  />
+                </g>
+              );
+            })}
+          </svg>
+
+          {(data.phases ?? []).map((phase, pIdx) => {
+            const isCurrent = data.currentPhase === phase.title;
+            const isLast = pIdx === (data.phases?.length ?? 0) - 1;
+            const pStatus =
+              phase.status ??
+              (isCurrent
+                ? "running"
+                : data.status === "failed" && isLast
+                ? "failed"
+                : "completed");
+
+            const stageColor =
+              pStatus === "completed"
+                ? "#10b981"
+                : pStatus === "running"
+                ? "#38bdf8"
+                : pStatus === "failed"
+                ? "#f43f5e"
+                : "#64748b";
+
+            const stageWorkers: WorkflowWorkerItem[] =
+              phase.workers && phase.workers.length > 0
+                ? phase.workers
+                : [
+                    {
+                      id: `stage-${pIdx}`,
+                      name: phase.title,
+                      status: pStatus as any,
+                      duration: "auto",
+                    },
+                  ];
+
+            return (
+              <div
+                key={pIdx}
+                style={{
+                  width: 215,
+                  flexShrink: 0,
+                  backgroundColor: "#0d0e15",
+                  border: `1px solid ${isCurrent ? "#38bdf8" : "#1e2030"}`,
+                  borderRadius: 8,
+                  display: "flex",
+                  flexDirection: "column",
+                  position: "relative",
+                  zIndex: 2,
+                }}
+              >
+                <View style={styles.stageHeader}>
+                  <View style={styles.stageHeaderTop}>
+                    <View style={styles.stageIndexPill}>
+                      <Text style={styles.stageIndexPillText}>
+                        STAGE 0{pIdx + 1}
+                      </Text>
+                    </View>
                     <View
                       style={[
-                        styles.stationLamp,
+                        styles.stageStatusBadge,
                         {
-                          backgroundColor: lampColor,
-                          borderColor: lampColor + "44",
-                        },
-                      ]}
-                    />
-                    {!isLast && (
-                      <View
-                        style={[
-                          styles.stationTrackLine,
-                          {
-                            backgroundColor: isCurrent ? "#38bdf8" + "66" : theme.colors.border,
-                          },
-                        ]}
-                      />
-                    )}
-                  </View>
-
-                  <View style={styles.stationInfo}>
-                    <Text
-                      style={[
-                        styles.stationTitle,
-                        {
-                          color: isCurrent ? theme.colors.foreground : theme.colors.foregroundMuted,
-                          fontWeight: isCurrent ? "700" : "500",
+                          backgroundColor: stageColor + "18",
+                          borderColor: stageColor + "40",
                         },
                       ]}
                     >
-                      0{idx + 1}. {phase.title}
-                    </Text>
-                    {phase.rounds && phase.rounds > 1 && (
-                      <Text style={[styles.roundsText, { color: theme.colors.accent }]}>
-                        ⟳ {phase.rounds} rounds
+                      <Text style={[styles.stageStatusBadgeText, { color: stageColor }]}>
+                        {pStatus.toUpperCase()}
                       </Text>
-                    )}
+                    </View>
                   </View>
+
+                  <Text style={styles.stageTitleText} numberOfLines={1}>
+                    {phase.title}
+                  </Text>
+                  <Text style={styles.stageSubText}>
+                    {stageWorkers.length} agents dispatched
+                  </Text>
                 </View>
-              );
-            })}
-          </View>
-        </View>
-      )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    padding: 8,
+                    flex: 1,
+                  }}
+                >
+                  {stageWorkers.map((worker, wIdx) => {
+                    const isRunning = worker.status === "running";
+                    const isCached = worker.status === "cached";
+                    const isCompleted = worker.status === "completed";
+                    const isFailed = worker.status === "failed";
+                    const workerKey = worker.id ?? worker.name;
+
+                    const statusBadgeColor = isCompleted
+                      ? "#10b981"
+                      : isCached
+                      ? "#10b981"
+                      : isRunning
+                      ? "#38bdf8"
+                      : isFailed
+                      ? "#f43f5e"
+                      : "#64748b";
+
+                    return (
+                      <div
+                        key={wIdx}
+                        data-agent-id={workerKey}
+                        style={{
+                          backgroundColor: "#151624",
+                          border: `1px solid ${isRunning ? "#38bdf8" : "#212338"}`,
+                          borderRadius: 6,
+                          padding: 8,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 6,
+                          position: "relative",
+                          boxShadow: isRunning ? "0 0 10px rgba(56, 189, 248, 0.15)" : "none",
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: -4,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            backgroundColor: statusBadgeColor,
+                            border: "1px solid #10111a",
+                          }}
+                        />
+                        <div
+                          style={{
+                            position: "absolute",
+                            right: -4,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            backgroundColor: statusBadgeColor,
+                            border: "1px solid #10111a",
+                          }}
+                        />
+
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 4,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              minWidth: 0,
+                              flex: 1,
+                            }}
+                          >
+                            {isRunning ? (
+                              <div
+                                className="wf-spin"
+                                style={{
+                                  width: 11,
+                                  height: 11,
+                                  borderRadius: "50%",
+                                  border: "1.5px solid rgba(56, 189, 248, 0.25)",
+                                  borderTopColor: "#38bdf8",
+                                  flexShrink: 0,
+                                }}
+                              />
+                            ) : isCompleted ? (
+                              <span style={{ color: "#10b981", fontSize: 11, fontWeight: "bold", flexShrink: 0 }}>
+                                ✓
+                              </span>
+                            ) : isCached ? (
+                              <span style={{ color: "#10b981", fontSize: 10, fontWeight: "bold", flexShrink: 0 }}>
+                                ⚡
+                              </span>
+                            ) : isFailed ? (
+                              <span style={{ color: "#f43f5e", fontSize: 11, fontWeight: "bold", flexShrink: 0 }}>
+                                ✕
+                              </span>
+                            ) : (
+                              <span style={{ color: "#64748b", fontSize: 10, flexShrink: 0 }}>○</span>
+                            )}
+                            <span
+                              style={{
+                                fontSize: 10.5,
+                                fontWeight: 700,
+                                color: "#f1f5f9",
+                                fontFamily: "monospace",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {worker.name}
+                            </span>
+                          </div>
+
+                          {worker.model && (
+                            <span
+                              style={{
+                                fontSize: 8,
+                                color: "#94a3b8",
+                                backgroundColor: "#1c1d2e",
+                                padding: "1px 4px",
+                                borderRadius: 3,
+                                fontFamily: "monospace",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {worker.model}
+                            </span>
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            fontSize: 8.5,
+                          }}
+                        >
+                          <span style={{ color: statusBadgeColor }}>
+                            {isRunning ? "running" : isCached ? "cached (0t)" : worker.duration ?? "done"}
+                          </span>
+                          {worker.worktree && (
+                            <span style={{ color: "#64748b", fontFamily: "monospace" }}>
+                              git:{worker.worktree}
+                            </span>
+                          )}
+                        </div>
+
+                        {worker.outputSnippet && (
+                          <div
+                            style={{
+                              backgroundColor: "#090a10",
+                              padding: "4px 6px",
+                              borderRadius: 4,
+                              fontSize: 8.5,
+                              color: "#94a3b8",
+                              fontFamily: "monospace",
+                              lineHeight: 1.3,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {worker.outputSnippet}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </ScrollView>
 
       {data.error && (
-        <View
-          style={[
-            styles.errorBanner,
-            {
-              backgroundColor: theme.colors.statusDanger + "15",
-              borderColor: theme.colors.statusDanger,
-            },
-          ]}
-        >
-          <Text style={[styles.errorHeading, { color: theme.colors.statusDanger }]}>
-            Deterministic Gate Rejected
+        <View style={styles.rejectionCard}>
+          <Text style={styles.rejectionTitle}>
+            Execution Terminated by Deterministic Gate
           </Text>
-          <Text style={[styles.errorDetail, { color: theme.colors.foreground }]}>
-            {data.error}
-          </Text>
-        </View>
-      )}
-
-      {data.reports && data.reports.length > 0 && (
-        <View style={styles.telemetryDrawer}>
-          <Pressable
-            style={styles.telemetryToggle}
-            onPress={() => setShowLogs(!showLogs)}
-          >
-            <Text style={[styles.telemetryToggleText, { color: theme.colors.foregroundMuted }]}>
-              {showLogs ? "▴ Hide Telemetry Events" : `▾ Show Telemetry Stream (${data.reports.length} events)`}
-            </Text>
-          </Pressable>
-
-          {showLogs && (
-            <View
-              style={[
-                styles.terminalBox,
-                {
-                  backgroundColor: "#0d0e15",
-                  borderColor: theme.colors.border,
-                },
-              ]}
-            >
-              {data.reports.slice(-5).map((rep, idx) => (
-                <View key={idx} style={styles.terminalRow}>
-                  <Text style={styles.terminalTime}>
-                    {new Date(rep.timestamp).toLocaleTimeString()}
-                  </Text>
-                  <Text style={styles.terminalArrow}>❯</Text>
-                  <Text style={styles.terminalJson} numberOfLines={2}>
-                    {typeof rep.payload === "string" ? rep.payload : JSON.stringify(rep.payload)}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
+          <Text style={styles.rejectionDetails}>{data.error}</Text>
         </View>
       )}
     </View>
@@ -215,56 +562,68 @@ export function WorkflowTimelineCard({
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 12,
+  cardContainer: {
+    borderRadius: 10,
     borderWidth: 1,
-    padding: 16,
-    marginVertical: 8,
-    gap: 12,
+    padding: 12,
+    marginVertical: 6,
+    gap: 10,
+    maxWidth: "100%",
   },
-  header: {
+  cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
   },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    flex: 1,
-  },
-  workflowIcon: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginTop: 2,
-  },
-  titleMeta: {
-    gap: 2,
-    flex: 1,
-  },
-  runIdRow: {
+  cardHeaderLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    flex: 1,
+    minWidth: 0,
   },
-  title: {
+  cardIcon: {
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "bold",
   },
-  runIdBadge: {
-    fontSize: 11,
+  cardTitleCol: {
+    gap: 1,
+    flex: 1,
+    minWidth: 0,
+  },
+  cardTitle: {
+    fontSize: 12,
+    fontWeight: "700",
     fontFamily: "monospace",
   },
-  subtitle: {
-    fontSize: 12,
+  cardSubtitle: {
+    fontSize: 10,
   },
-  statusLampBadge: {
+  cardHeaderRight: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 8,
+  },
+  cachePill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.3)",
+  },
+  cachePillText: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#10b981",
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 7,
     paddingVertical: 3,
-    borderRadius: 9999,
+    borderRadius: 10,
     borderWidth: 1,
   },
   statusDot: {
@@ -272,125 +631,75 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
   },
-  statusText: {
-    fontSize: 10,
+  statusBadgeText: {
+    fontSize: 8.5,
     fontWeight: "800",
   },
-  statStrip: {
+  swimlanesScroll: {
+    width: "100%",
+  },
+  swimlanesScrollContent: {
+    paddingVertical: 2,
+  },
+  stageHeader: {
+    padding: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1a1c29",
+    gap: 3,
+  },
+  stageHeaderTop: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    alignItems: "center",
+  },
+  stageIndexPill: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 3,
+    backgroundColor: "#181a28",
+  },
+  stageIndexPillText: {
+    fontSize: 8,
+    fontWeight: "800",
+    color: "#64748b",
+    fontFamily: "monospace",
+  },
+  stageStatusBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 3,
     borderWidth: 1,
   },
-  statItem: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  statDividerText: {
-    fontSize: 11,
-  },
-  metroSection: {
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 9,
+  stageStatusBadgeText: {
+    fontSize: 7.5,
     fontWeight: "800",
-    letterSpacing: 0.8,
+    fontFamily: "monospace",
   },
-  metroList: {
-    gap: 0,
-  },
-  stationRow: {
-    flexDirection: "row",
-    minHeight: 28,
-  },
-  stationSpine: {
-    width: 20,
-    alignItems: "center",
-    position: "relative",
-  },
-  stationLamp: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 2,
-    marginTop: 4,
-    zIndex: 2,
-  },
-  stationTrackLine: {
-    position: "absolute",
-    top: 14,
-    bottom: -4,
-    width: 2,
-    zIndex: 1,
-  },
-  stationInfo: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingLeft: 8,
-    paddingBottom: 8,
-  },
-  stationTitle: {
-    fontSize: 12,
-  },
-  roundsText: {
-    fontSize: 10,
+  stageTitleText: {
+    fontSize: 11,
     fontWeight: "700",
+    color: "#f1f5f9",
   },
-  errorBanner: {
-    padding: 10,
-    borderRadius: 8,
+  stageSubText: {
+    fontSize: 8.5,
+    color: "#64748b",
+  },
+  rejectionCard: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: "rgba(244, 63, 94, 0.1)",
     borderWidth: 1,
-    gap: 4,
+    borderColor: "rgba(244, 63, 94, 0.4)",
+    gap: 2,
   },
-  errorHeading: {
-    fontSize: 11,
+  rejectionTitle: {
+    fontSize: 10.5,
     fontWeight: "800",
+    color: "#f43f5e",
   },
-  errorDetail: {
-    fontSize: 11,
-    fontFamily: "monospace",
-  },
-  telemetryDrawer: {
-    gap: 6,
-  },
-  telemetryToggle: {
-    paddingVertical: 2,
-  },
-  telemetryToggleText: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  terminalBox: {
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 4,
-  },
-  terminalRow: {
-    flexDirection: "row",
-    gap: 6,
-    paddingVertical: 2,
-  },
-  terminalTime: {
-    color: "#475569",
-    fontSize: 10,
-    fontFamily: "monospace",
-  },
-  terminalArrow: {
-    color: "#38bdf8",
-    fontSize: 10,
-    fontFamily: "monospace",
-  },
-  terminalJson: {
-    flex: 1,
-    color: "#94a3b8",
-    fontSize: 10,
+  rejectionDetails: {
+    fontSize: 9.5,
+    color: "#fecdd3",
     fontFamily: "monospace",
   },
 });
