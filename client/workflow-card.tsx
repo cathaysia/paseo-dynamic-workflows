@@ -292,15 +292,6 @@ export function WorkflowTimelineCard({
                 ? "failed"
                 : "completed");
 
-            const stageColor =
-              pStatus === "completed"
-                ? "#10b981"
-                : pStatus === "running"
-                ? "#38bdf8"
-                : pStatus === "failed"
-                ? "#f43f5e"
-                : "#64748b";
-
             const stageWorkers: WorkflowWorkerItem[] =
               phase.workers && phase.workers.length > 0
                 ? phase.workers
@@ -329,32 +320,8 @@ export function WorkflowTimelineCard({
                 }}
               >
                 <View style={styles.stageHeader}>
-                  <View style={styles.stageHeaderTop}>
-                    <View style={styles.stageIndexPill}>
-                      <Text style={styles.stageIndexPillText}>
-                        STAGE 0{pIdx + 1}
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.stageStatusBadge,
-                        {
-                          backgroundColor: stageColor + "18",
-                          borderColor: stageColor + "40",
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.stageStatusBadgeText, { color: stageColor }]}>
-                        {pStatus.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-
                   <Text style={styles.stageTitleText} numberOfLines={1}>
                     {phase.title}
-                  </Text>
-                  <Text style={styles.stageSubText}>
-                    {stageWorkers.length} agents dispatched
                   </Text>
                 </View>
 
@@ -642,47 +609,15 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   stageHeader: {
-    padding: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#1a1c29",
-    gap: 3,
-  },
-  stageHeaderTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  stageIndexPill: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 3,
-    backgroundColor: "#181a28",
-  },
-  stageIndexPillText: {
-    fontSize: 8,
-    fontWeight: "800",
-    color: "#64748b",
-    fontFamily: "monospace",
-  },
-  stageStatusBadge: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 3,
-    borderWidth: 1,
-  },
-  stageStatusBadgeText: {
-    fontSize: 7.5,
-    fontWeight: "800",
-    fontFamily: "monospace",
   },
   stageTitleText: {
     fontSize: 11,
     fontWeight: "700",
     color: "#f1f5f9",
-  },
-  stageSubText: {
-    fontSize: 8.5,
-    color: "#64748b",
   },
   rejectionCard: {
     padding: 8,
